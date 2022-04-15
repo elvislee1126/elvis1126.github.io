@@ -119,12 +119,12 @@
   </li>
         <li class="menu-item menu-item-tags">
 
-    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags<span class="badge">4</span></a>
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags<span class="badge">1</span></a>
 
   </li>
         <li class="menu-item menu-item-archives">
 
-    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives<span class="badge">3</span></a>
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives<span class="badge">2</span></a>
 
   </li>
   </ul>
@@ -385,112 +385,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="cn">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2021/09/25/%E4%BD%95%E4%B8%BA%E9%A1%BA%E5%BA%8FIO/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/me.jpeg">
-      <meta itemprop="name" content="Elvis Lee">
-      <meta itemprop="description" content="Linux & Golang & Node.JS">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="究竟用时间换了什么">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2021/09/25/%E4%BD%95%E4%B8%BA%E9%A1%BA%E5%BA%8FIO/" class="post-title-link" itemprop="url">何为顺序IO</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">Posted on</span>
-
-              <time title="Created: 2021-09-25 18:10:49" itemprop="dateCreated datePublished" datetime="2021-09-25T18:10:49+08:00">2021-09-25</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2021-12-22 10:09:35" itemprop="dateModified" datetime="2021-12-22T10:09:35+08:00">2021-12-22</time>
-              </span>
-
-          
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>​    <code>levelDB</code>、<code>rocksDB</code> 等键值对数据库在处理客户端传来的 <code>set key</code>、<code>del key</code> 等命令前，先会把此次操作<strong>追加写入</strong>到 <code>WAL（write ahead log）</code> 日志文件中，使得内存数据丢失时，仍可以通过磁盘中的<code>WAL</code>日志进行恢复。对于键值对数据库这样一种常用作缓存的面对巨量请求的中间件而已，经历这样一次从用户态到内核态到机械层面的磁盘写入，毫无疑问会成为性能的瓶颈。<br><strong>然而</strong>，有一种说法是<strong>追加写入</strong>日志文件的方式属于<strong>磁盘顺序写入</strong>，其写入速度堪比内存，这就让我十分困惑：</p>
-<ul>
-<li>到底什么是磁盘「顺序写入」？</li>
-<li>那「随机写入」又是什么？</li>
-<li>磁盘顺序写入为什么「速度堪比内存」？  </li>
-</ul>
-<h2 id="介绍"><a href="#介绍" class="headerlink" title="介绍"></a>介绍</h2><p>虚拟文件系统 - <code>virtual filesystem [switch]</code></p>
-<p>​    VFS 是操作系统内核中的一个软件层，是对具体的各类文件系统的抽象。VFS 对用户空间的进程提供一组文件系统的系统调用：open(2)  stat(2)  read(2)  write(2)  chmod(2)  等等。通过 VFS 也实现了多种的文件系统具体实现在内核空间的共存。</p>
-<p>目录项 - <code>directory entry</code></p>
-<p>目录项缓存 -  <code>directory entry cache (dcache)</code>  </p>
-<p>​    目录项缓存，简称 dentry cache，<strong>提供了一种高性能的查找机制可以快速的把</strong> open(2)  stat(2)  read(2)  write(2)  chmod(2)  等方法的 <strong>pathname/filename 参数翻译成一个具体的 dentry</strong>。dentry cache 永远只存在于内存中而不会持久化到存储设备上。</p>
-<p>​    dentry cache 是你的整个文件空间的一个视图，部分设备可能无法把整个 dentry cache 装进内存中，？VFS 会通过查找 inode 补全 dentry cache。</p>
-<p>索引节点 - <code>index node（inode）</code></p>
-<p>​    Inodes 可以是一个常规的文件、目录、有名管道 FIFOs 等。<strong>inode 是存在于磁盘上的，当 VFS 需要具体的某些 inodes 时，会把它们从磁盘拷贝到内存中，并且对它们的修改会写回到磁盘中。</strong></p>
-<p>​    <strong>dentry 和 inode 是 n:1 的关系</strong>，每一个 dentry 有一个指针指向一个 inode，一个 inode 可以被多个 dentry 所引用（比如硬连接的场景下）。</p>
-<p>​    <strong>？查找一个 inode 要求 VFS 调用父目录的 inode 的 lookup() 方法</strong>，这个方法被该 inode 的所属文件系统所装载。当 VFS 有了所需的 dentry（和 inode），便可以实现 open(2) 一个文件，stat(2) 一个文件之类的方法。stat(2) 方法非常简单，VFS 获取 dentry 所指向的 inode，把 inode 中的数据返回到用户空间即可。</p>
-<p>The File Object - <code> file 结构体</code></p>
-<blockquote>
-<p>内核用于管理一个被某个进程所打开的文件</p>
-</blockquote>
-<p>​    file 结构体是内核空间的文件描述符的实现。file 结构体有一个指针指向一个 dentry，并且有一组由 inode 提供的 file operation 方法。因此，进程打开一个文件的过程如下：</p>
-<ol>
-<li>首先会分配一个 file 结构体</li>
-<li>根据 pathname 参数查找从 dentry cahce 中快速查找到 dentry</li>
-<li>有了 dentry 以及 dentry 中指向的 inode 后，便可以初始化 file 结构体</li>
-<li>初始化 file 结构体后，调用由 inode 提供的一组 file operation 方法中的 open() 方法，以让该 inode 所属的具体文件系统实现去做一些相关的操作。</li>
-<li>接着，分配一个用户空间的该进程的文件描述符 <code>fd</code>（就是一个数字）</li>
-<li><code>fd</code>作为 key，file 结构体作为 value，设置到该进程的文件描述表中即可。</li>
-</ol>
-<p>可以看到，VFS 向用户空间暴露的就是一个数字文件描述符，简称 <code>fd</code>，</p>
-<p>诸如 Reading、Writing、Closing 等方法都是通过 <code>fd</code> 通过进程的文件描述符表查找到对应的 file 结构体调用相应的 file operation 方法组中的方法。</p>
-<p>The Address Space Object - <code>address_space</code></p>
-<p><img src="https://img-blog.csdnimg.cn/20200602101417585.jpg?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2ppbmtpbmcwMQ==,size_16,color_FFFFFF,t_70" alt="img"></p>
-<h2 id="正文"><a href="#正文" class="headerlink" title="正文"></a>正文</h2><p><strong>低能预警</strong>，下面讲述到：</p>
-<ul>
-<li>文件描述符</li>
-<li>inode</li>
-<li>linux io 引擎</li>
-<li>page cache</li>
-<li>DMA（direct-memory-access）</li>
-<li>磁盘工作机制  </li>
-</ul>
-<h2 id="讨论"><a href="#讨论" class="headerlink" title="讨论"></a>讨论</h2><h2 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h2>
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
 
@@ -559,14 +453,14 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">2</span>
           <span class="site-state-item-name">posts</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-count">1</span>
         <span class="site-state-item-name">tags</span></a>
       </div>
   </nav>
